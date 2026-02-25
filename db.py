@@ -13,32 +13,33 @@ def init_db():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS tg_users (
-                    id BIGSERIAL PRIMARY KEY,
-                    telegram_user_id BIGINT UNIQUE NOT NULL,
-                    username TEXT,
-                    first_name TEXT,
-                    last_name TEXT,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                CREATE TABLE IF NOT EXISTS appointments (
+                  id BIGSERIAL PRIMARY KEY,
+                  tg_id BIGINT UNIQUE NOT NULL,
+                  fio TEXT NOT NULL,
+                  appointment TIMESTAMPTZ NOT NULL
                 );
             """)
             conn.commit()
 
-def upsert_user(user):
+def upsert_appointment(tg_id: int, fio: str, appointment_iso: str):
     """
-    user: telegram.User
+    appointment_iso: ISO string with timezone, e.g. 2026-02-25T14:30:00+01:00
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO tg_users (telegram_user_id, username, first_name, last_name)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (telegram_user_id)
+                INSERT INTO appointments (tg_id, fio, appointment)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (tg_id)
                 DO UPDATE SET
-                    username = EXCLUDED.username,
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name,
-                    updated_at = NOW();
-            """, (user.id, user.username, user.first_name, user.last_name))
+                  fio = EXCLUDED.fio,
+                  appointment = EXCLUDED.appointment;
+            """, (tg_id, fio, appointment_iso))
             conn.commit()
+
+def get_appointment(tg_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, tg_id, fio, appointment FROM appointments WHERE tg_id=%s", (tg_id,))
+            return cur.fetchone()
