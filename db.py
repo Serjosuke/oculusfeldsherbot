@@ -173,3 +173,41 @@ def get_my_appointment(tg_id: int):
                 (tg_id,),
             )
             return cur.fetchone()
+        
+def upsert_appointment(tg_id: int, fio: str, appointment_iso: str):
+    """
+    Backward-compatible: создаёт/обновляет запись по tg_id (как было раньше).
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO appointments (tg_id, fio, appointment, updated_at)
+                VALUES (%s, %s, %s, now())
+                ON CONFLICT (tg_id)
+                DO UPDATE SET
+                  fio = EXCLUDED.fio,
+                  appointment = EXCLUDED.appointment,
+                  updated_at = now()
+                """,
+                (tg_id, fio, appointment_iso),
+            )
+            conn.commit()
+
+
+def get_appointment(tg_id: int):
+    """
+    Backward-compatible: достаёт запись по tg_id.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, patient_id, tg_id, fio, appointment, updated_at
+                FROM appointments
+                WHERE tg_id = %s
+                LIMIT 1
+                """,
+                (tg_id,),
+            )
+            return cur.fetchone()
