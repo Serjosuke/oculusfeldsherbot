@@ -118,7 +118,7 @@ async def ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     upsert_appointment(user.id, fio, dt.isoformat())
 
     await update.message.reply_text(
-        f"Готово ✅\nЗаписал(а):\nФИО: {fio}\nВремя: {dt.strftime('%d.%m.%Y %H:%M')} (Luxembourg)",
+        f"Готово ✅\nЗаписал(а):\nФИО: {fio}\nВремя: {dt.strftime('%d.%m.%Y %H:%M')} (Yakutsk)",
         reply_markup=ReplyKeyboardRemove()
     )
     context.user_data.clear()
