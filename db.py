@@ -20,20 +20,26 @@ def init_db():
     with get_conn() as conn:
         with conn.cursor() as cur:
             # 1) Таблица привязок Telegram -> Patient/User
+                       # Уникальность по patient_id (для ON CONFLICT (patient_id))
+            # В Postgres UNIQUE допускает много NULL, поэтому WHERE не нужен.
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS telegram_identities (
-                  tg_id BIGINT PRIMARY KEY,
-                  patient_id BIGINT NULL,
-                  user_id BIGINT NULL,
-                  telegram_username TEXT NULL,
-                  verified_at TIMESTAMPTZ NULL,
-                  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                  CONSTRAINT telegram_identities_one_identity CHECK (
-                    (patient_id IS NOT NULL AND user_id IS NULL) OR
-                    (patient_id IS NULL AND user_id IS NOT NULL)
-                  )
-                );
+                DO $$
+                BEGIN
+                  -- если раньше был partial index, удалим его, иначе ON CONFLICT (patient_id) не сработает
+                  IF EXISTS (
+                    SELECT 1 FROM pg_indexes WHERE indexname = 'appointments_patient_id_uq'
+                  ) THEN
+                    DROP INDEX appointments_patient_id_uq;
+                  END IF;
+
+                  -- создаём обычный unique index (подходит для ON CONFLICT (patient_id))
+                  CREATE UNIQUE INDEX appointments_patient_id_uq
+                    ON appointments (patient_id);
+                EXCEPTION
+                  WHEN duplicate_object THEN
+                    NULL;
+                END $$;
                 """
             )
 
