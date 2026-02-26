@@ -314,12 +314,13 @@ async def _route_button(update: Update, context: ContextTypes.DEFAULT_TYPE, butt
 
 
 async def menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Global handler for main menu buttons when user is not inside a ConversationHandler state.
-    """
     text = update.message.text.strip()
-    if text in BUTTON_TO_CMD:
-        return await _route_button(update, context, text)
+
+    if text == BTN_MY:
+        return await my(update, context)
+
+    if text == BTN_CANCEL:
+        return await cancel(update, context)
 
 
 def main():
@@ -331,25 +332,39 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     conv_link = ConversationHandler(
-        entry_points=[
-            CommandHandler("link", link),
+    entry_points=[
+        CommandHandler("link", link),
+        MessageHandler(filters.Regex(f"^{re.escape(BTN_LINK)}$"), link),
+    ],
+    states={
+        ASK_PASSPORT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, ask_passport)
         ],
-        states={
-            ASK_PASSPORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_passport)],
-            ASK_BDATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_bdate)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+        ASK_BDATE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, ask_bdate)
+        ],
+    },
+    fallbacks=[
+        CommandHandler("cancel", cancel),
+        MessageHandler(filters.Regex(f"^{re.escape(BTN_CANCEL)}$"), cancel),
+    ],
+)
 
     conv_book = ConversationHandler(
-        entry_points=[
-            CommandHandler("book", book),
+    entry_points=[
+        CommandHandler("book", book),
+        MessageHandler(filters.Regex(f"^{re.escape(BTN_BOOK)}$"), book),
+    ],
+    states={
+        ASK_TIME: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, ask_time)
         ],
-        states={
-            ASK_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_time)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+    },
+    fallbacks=[
+        CommandHandler("cancel", cancel),
+        MessageHandler(filters.Regex(f"^{re.escape(BTN_CANCEL)}$"), cancel),
+    ],
+)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("my", my))
@@ -358,7 +373,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
 
     # IMPORTANT: this goes AFTER conversation handlers
-    btn_pattern = f"^({re.escape(BTN_BOOK)}|{re.escape(BTN_MY)}|{re.escape(BTN_LINK)}|{re.escape(BTN_CANCEL)})$"
+    btn_pattern = f"^({re.escape(BTN_MY)}|{re.escape(BTN_CANCEL)})$"
     app.add_handler(MessageHandler(filters.Regex(btn_pattern), menu_buttons))
 
     logger.info("Bot started (polling)...")
