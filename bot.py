@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -357,7 +358,8 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
 
     # IMPORTANT: this goes AFTER conversation handlers
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_buttons))
+    btn_pattern = f"^({re.escape(BTN_BOOK)}|{re.escape(BTN_MY)}|{re.escape(BTN_LINK)}|{re.escape(BTN_CANCEL)})$"
+    app.add_handler(MessageHandler(filters.Regex(btn_pattern), menu_buttons))
 
     logger.info("Bot started (polling)...")
     app.run_polling(close_loop=False)
