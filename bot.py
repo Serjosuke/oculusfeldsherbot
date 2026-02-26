@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardRemove, BotCommand, MenuButtonCommands
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
     ContextTypes, filters
@@ -67,10 +67,25 @@ def _parse_birth_date(text: str) -> str | None:
     return None
 
 
+async def post_init(application: Application):
+    """
+    Configure Telegram system Menu (commands list).
+    """
+    await application.bot.set_my_commands([
+        BotCommand("book", "Записаться"),
+        BotCommand("my", "Моя запись"),
+        BotCommand("link", "Привязать аккаунт"),
+        BotCommand("cancel", "Отменить ввод"),
+        BotCommand("start", "Показать помощь"),
+    ])
+    # Make the chat "Menu" button open the command list
+    await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Я помогу записаться.\n\n"
-        "Команды:\n"
+        "Команды (также доступны в кнопке Menu):\n"
         "/book — записаться\n"
         "/my — посмотреть мою запись\n"
         "/link — привязать Telegram к пациенту (паспорт + дата рождения)\n"
@@ -101,7 +116,9 @@ async def my(update: Update, context: ContextTypes.DEFAULT_TYPE):
         appt_local = appt.astimezone(TZ)
         appt_str = appt_local.strftime("%d.%m.%Y %H:%M")
 
-    await update.message.reply_text(f"Твоя запись:\nФИО: {row['fio']}\nВремя: {appt_str}")
+    await update.message.reply_text(
+        f"Твоя запись:\nФИО: {row['fio']}\nВремя: {appt_str}"
+    )
 
 
 async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,17 +189,12 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    # Уже привязан — идём сразу к выбору времени
-    kb = ReplyKeyboardMarkup(
-        [["2026-02-25 14:30", "2026-02-25 15:00"], ["/cancel"]],
-        resize_keyboard=True
-    )
     await update.message.reply_text(
         "Отправь дату и время приёма.\n"
         "Формат: `YYYY-MM-DD HH:MM` или `DD.MM.YYYY HH:MM`\n"
-        "Например: 2026-02-25 14:30",
-        reply_markup=kb,
-        parse_mode="Markdown"
+        "Например: 2026-02-25 14:30\n\n"
+        "Отмена: /cancel",
+        parse_mode="Markdown",
     )
     return ASK_TIME
 
@@ -193,13 +205,17 @@ async def ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not dt:
         await update.message.reply_text(
             "Не понял дату/время 😅\n"
-            "Напиши, например: 2026-02-25 14:30 или 25.02.2026 14:30"
+            "Напиши, например: 2026-02-25 14:30 или 25.02.2026 14:30\n\n"
+            "Отмена: /cancel"
         )
         return ASK_TIME
 
     now = datetime.now(TZ)
     if dt < now:
-        await update.message.reply_text("Это время уже в прошлом. Введи, пожалуйста, будущее время.")
+        await update.message.reply_text(
+            "Это время уже в прошлом. Введи, пожалуйста, будущее время.\n\n"
+            "Отмена: /cancel"
+        )
         return ASK_TIME
 
     user = update.effective_user
@@ -208,25 +224,16 @@ async def ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Потерял привязку. Запусти /link ещё раз.")
         return ConversationHandler.END
 
-    # fio берём из снапшота в patients: для этого после link_patient... мы знаем только patient_id
-    # чтобы не усложнять — пишем fio как 'PATIENT#id' если прям совсем нет данных,
-    # но обычно patients.fio есть, и его можно было бы подтянуть отдельным запросом.
-    # Здесь проще: обновим fio из patients через небольшой SELECT прямо в db.py (если хочешь — добавлю).
-    # Пока: используем fio из patients через быстрый join при записи:
-    # (ниже делаем маленькую подстраховку — fio спросить не надо)
     patient_id = identity["patient_id"]
 
-    # Минимально: попробуем взять fio из базы одним запросом через appointments снапшотом позже.
-    # Но чтобы всё было красиво — просто сохраним fio как пустой нельзя (в старой схеме NOT NULL).
-    # Поэтому делаем понятный placeholder; если хочешь — я добавлю функцию get_patient_fio(patient_id).
+    # Если у тебя есть ФИО в patient/identity — подставь здесь.
     fio = f"PATIENT#{patient_id}"
 
-    # Запишем в appointments по patient_id
     upsert_appointment_for_patient(patient_id, user.id, fio, dt.isoformat())
 
     await update.message.reply_text(
-        f"Готово ✅\nЗаписал(а) на: {dt.strftime('%d.%m.%Y %H:%M')} (Yakutsk)",
-        reply_markup=ReplyKeyboardRemove()
+        f"Готово ✅\nЗаписал(а) на: {dt.strftime('%d.%m.%Y %H:%M')} (Yakutsk)\n\n"
+        "Проверить запись: /my"
     )
     context.user_data.clear()
     return ConversationHandler.END
@@ -234,7 +241,7 @@ async def ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("Ок, отменил ввод.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Ок, отменил ввод.")
     return ConversationHandler.END
 
 
@@ -244,7 +251,7 @@ def main():
 
     init_db()
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     conv_link = ConversationHandler(
         entry_points=[CommandHandler("link", link)],
