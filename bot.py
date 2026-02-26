@@ -128,10 +128,9 @@ async def my(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Давай привяжем тебя к пациенту в базе.\n\n"
-        "Отправь *паспорт* (как он хранится в базе: серия/номер).\n\n"
-        "Отмена: кнопка «❌ Отмена».",
-        parse_mode="Markdown",
+        "Отправь паспорт в формате:\n"
+        "1234 567890\n\n"
+        "(4 цифры серия, пробел, 6 цифр номер)",
         reply_markup=MAIN_KB,
     )
     return ASK_PASSPORT
@@ -144,12 +143,18 @@ async def ask_passport(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in BUTTON_TO_CMD:
         return await _route_button(update, context, text)
 
-    if len(text) < 5:
+    # Формат: 4 цифры + пробел + 6 цифр
+    if not re.fullmatch(r"\d{4} \d{6}", text):
         await update.message.reply_text(
-            "Похоже, паспорт введён слишком коротко. Попробуй ещё раз.",
+            "Неверный формат паспорта.\n\n"
+            "Введите так:\n"
+            "1234 567890\n\n"
+            "(4 цифры серия, пробел, 6 цифр номер)",
             reply_markup=MAIN_KB,
         )
         return ASK_PASSPORT
+
+    context.user_data["passport"] = text
 
     context.user_data["passport"] = text
     await update.message.reply_text(
